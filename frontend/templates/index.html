@@ -1,0 +1,181 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mini LMS — Login</title>
+  <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card">
+
+      <div class="auth-logo">
+        <span class="logo-icon">🎓</span>
+        <h1>Mini LMS</h1>
+        <p>Learning Management System</p>
+      </div>
+
+      <!-- Tab switcher -->
+      <div class="tab-switcher">
+        <button class="tab-btn active" onclick="switchTab('login')">Login</button>
+        <button class="tab-btn" onclick="switchTab('register')">Register</button>
+      </div>
+
+      <!-- Alert area -->
+      <div id="alert" style="display:none"></div>
+
+      <!-- ── LOGIN FORM ── -->
+      <form id="loginForm" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label for="loginUsername">Username</label>
+          <input type="text" id="loginUsername" class="form-control" placeholder="your_username" required />
+        </div>
+        <div class="form-group">
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" class="form-control" placeholder="••••••••" required />
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="loginBtn">
+          Sign In
+        </button>
+      </form>
+
+      <!-- ── REGISTER FORM ── -->
+      <form id="registerForm" style="display:none" onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label for="regUsername">Username</label>
+          <input type="text" id="regUsername" class="form-control" placeholder="choose_username" required />
+        </div>
+        <div class="form-group">
+          <label for="regEmail">Email</label>
+          <input type="email" id="regEmail" class="form-control" placeholder="you@email.com" />
+        </div>
+        <div class="form-group">
+          <label for="regRole">I am a...</label>
+          <select id="regRole" class="form-control">
+            <option value="student">Student</option>
+            <option value="instructor">Instructor</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="regPassword">Password</label>
+          <input type="password" id="regPassword" class="form-control" placeholder="min 8 characters" required minlength="8" />
+        </div>
+        <div class="form-group">
+          <label for="regPassword2">Confirm Password</label>
+          <input type="password" id="regPassword2" class="form-control" placeholder="repeat password" required />
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="regBtn">
+          Create Account
+        </button>
+      </form>
+
+    </div>
+  </div>
+
+  <script>
+    const API = '';
+
+    function switchTab(tab) {
+      document.getElementById('loginForm').style.display = tab === 'login' ? '' : 'none';
+      document.getElementById('registerForm').style.display = tab === 'register' ? '' : 'none';
+      document.querySelectorAll('.tab-btn').forEach((b, i) => {
+        b.classList.toggle('active', (tab === 'login' && i === 0) || (tab === 'register' && i === 1));
+      });
+      hideAlert();
+    }
+
+    function showAlert(msg, type = 'error') {
+      const el = document.getElementById('alert');
+      el.innerHTML = `<div class="alert alert-${type}">
+        <span>${type === 'success' ? '✅' : type === 'info' ? 'ℹ️' : '❌'}</span> ${msg}
+      </div>`;
+      el.style.display = 'block';
+    }
+
+    function hideAlert() {
+      document.getElementById('alert').style.display = 'none';
+    }
+
+    function setLoading(btnId, loading) {
+      const btn = document.getElementById(btnId);
+      btn.disabled = loading;
+      btn.innerHTML = loading
+        ? '<span class="spinner"></span> Please wait...'
+        : (btnId === 'loginBtn' ? 'Sign In' : 'Create Account');
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      hideAlert();
+      const username = document.getElementById('loginUsername').value;
+      const password = document.getElementById('loginPassword').value;
+      setLoading('loginBtn', true);
+      try {
+        const res = await fetch(`${API}/api/token/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Invalid credentials');
+        localStorage.setItem('access', data.access);
+        localStorage.setItem('refresh', data.refresh);
+        // Fetch profile
+        const prof = await fetch(`${API}/api/accounts/profile/`, {
+          headers: { 'Authorization': `Bearer ${data.access}` }
+        });
+        const user = await prof.json();
+        localStorage.setItem('user', JSON.stringify(user));
+        showAlert('Login successful! Redirecting...', 'success');
+        setTimeout(() => { window.location.href = '/courses/'; }, 800);
+      } catch (err) {
+        showAlert(err.message);
+      } finally {
+        setLoading('loginBtn', false);
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      hideAlert();
+      const password = document.getElementById('regPassword').value;
+      const password2 = document.getElementById('regPassword2').value;
+      if (password !== password2) return showAlert('Passwords do not match.');
+      const payload = {
+        username: document.getElementById('regUsername').value,
+        email: document.getElementById('regEmail').value,
+        role: document.getElementById('regRole').value,
+        password,
+        password2,
+      };
+      setLoading('regBtn', true);
+      try {
+        const res = await fetch(`${API}/api/accounts/register/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          const msg = Object.values(data).flat().join(' ');
+          throw new Error(msg);
+        }
+        showAlert('Account created! Please log in.', 'success');
+        switchTab('login');
+        document.getElementById('loginUsername').value = payload.username;
+      } catch (err) {
+        showAlert(err.message);
+      } finally {
+        setLoading('regBtn', false);
+      }
+    }
+
+    // Auto-redirect if already logged in
+    if (localStorage.getItem('access')) {
+      window.location.href = '/courses/';
+    }
+  </script>
+</body>
+</html>

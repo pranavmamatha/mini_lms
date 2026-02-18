@@ -1,0 +1,279 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mini LMS — Courses</title>
+  <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+</head>
+<body>
+
+  <!-- ── Navbar ── -->
+  <nav class="navbar">
+    <a class="navbar-brand" href="/courses/">
+      <span>🎓</span> Mini LMS
+    </a>
+    <div class="navbar-nav">
+      <a class="nav-link active" href="/courses/">Courses</a>
+      <a class="nav-link" href="/assignments/">Assignments</a>
+    </div>
+    <div class="nav-user">
+      <span id="navUsername">Loading...</span>
+      <span id="navBadge" class="badge"></span>
+      <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
+    </div>
+  </nav>
+
+  <div class="main-container">
+
+    <!-- Stats Row -->
+    <div class="stats-row" id="statsRow" style="display:none">
+      <div class="stat-card">
+        <div class="stat-value" id="statTotal">0</div>
+        <div class="stat-label">Total Courses</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statMine">0</div>
+        <div class="stat-label" id="statMineLabel">Enrolled</div>
+      </div>
+    </div>
+
+    <!-- Page Header -->
+    <div class="page-header">
+      <div>
+        <h1>📚 Course Catalog</h1>
+        <p id="headerSub">Browse all available courses</p>
+      </div>
+      <div id="headerActions"></div>
+    </div>
+
+    <!-- Alert -->
+    <div id="alert" style="display:none"></div>
+
+    <!-- Filter Tabs -->
+    <div class="tab-switcher" style="max-width:320px; margin-bottom:1.5rem">
+      <button class="tab-btn active" onclick="loadCourses('all')">All Courses</button>
+      <button class="tab-btn" onclick="loadCourses('my')" id="myTab">My Courses</button>
+    </div>
+
+    <!-- Courses grid -->
+    <div id="coursesContainer">
+      <div class="empty-state">
+        <div class="empty-icon">⏳</div>
+        <h3>Loading courses...</h3>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Create Course Modal (instructor only) ── -->
+  <div class="modal-overlay" id="createModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>➕ Create New Course</h3>
+        <button class="modal-close" onclick="closeModal('createModal')">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="createAlert" style="display:none"></div>
+        <form onsubmit="handleCreateCourse(event)">
+          <div class="form-group">
+            <label>Course Title</label>
+            <input type="text" id="courseTitle" class="form-control" placeholder="e.g. Introduction to Python" required />
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <textarea id="courseDesc" class="form-control" placeholder="What will students learn?" required></textarea>
+          </div>
+          <div style="display:flex; gap:.75rem; justify-content:flex-end; margin-top:1rem">
+            <button type="button" class="btn btn-outline" onclick="closeModal('createModal')">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="createBtn">Create Course</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = '';
+    let currentUser = null;
+    let currentFilter = 'all';
+
+    function getToken() { return localStorage.getItem('access'); }
+
+    function authHeaders() {
+      return { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' };
+    }
+
+    function logout() {
+      localStorage.clear();
+      window.location.href = '/';
+    }
+
+    function showAlert(msg, type = 'error', target = 'alert') {
+      const el = document.getElementById(target);
+      el.innerHTML = `<div class="alert alert-${type}"><span>${type === 'success' ? '✅' : '❌'}</span> ${msg}</div>`;
+      el.style.display = 'block';
+    }
+
+    function openModal(id) { document.getElementById(id).classList.add('open'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+    // ── Init ──────────────────────────────────────────────────────────────
+    async function init() {
+      const token = getToken();
+      if (!token) return window.location.href = '/';
+
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        currentUser = JSON.parse(stored);
+        setupUI();
+      }
+
+      // Refresh profile
+      const res = await fetch(`${API}/api/accounts/profile/`, { headers: { 'Authorization': `Bearer ${token}` }});
+      if (!res.ok) return logout();
+      currentUser = await res.json();
+      localStorage.setItem('user', JSON.stringify(currentUser));
+      setupUI();
+      loadCourses('all');
+    }
+
+    function setupUI() {
+      document.getElementById('navUsername').textContent = currentUser.username;
+      const badge = document.getElementById('navBadge');
+      badge.textContent = currentUser.role;
+      badge.className = `badge badge-${currentUser.role}`;
+
+      document.getElementById('statsRow').style.display = 'grid';
+      const mineLabel = document.getElementById('statMineLabel');
+      mineLabel.textContent = currentUser.role === 'instructor' ? 'Teaching' : 'Enrolled';
+
+      if (currentUser.role === 'instructor') {
+        document.getElementById('headerActions').innerHTML = `
+          <button class="btn btn-primary" onclick="openModal('createModal')">➕ New Course</button>`;
+        document.getElementById('myTab').textContent = 'My Courses';
+      }
+    }
+
+    async function loadCourses(filter) {
+      currentFilter = filter;
+      document.querySelectorAll('.tab-btn').forEach((b, i) =>
+        b.classList.toggle('active', (filter === 'all' && i === 0) || (filter === 'my' && i === 1)));
+
+      const endpoint = filter === 'my' ? `${API}/api/courses/my/` : `${API}/api/courses/`;
+      const res = await fetch(endpoint, { headers: authHeaders() });
+      if (!res.ok) return showAlert('Failed to load courses.');
+      const courses = await res.json();
+
+      document.getElementById('statTotal').textContent = filter === 'all' ? courses.length : document.getElementById('statTotal').textContent;
+      document.getElementById('statMine').textContent = filter === 'my' ? courses.length : document.getElementById('statMine').textContent;
+
+      renderCourses(courses);
+    }
+
+    function renderCourses(courses) {
+      const container = document.getElementById('coursesContainer');
+      if (!courses.length) {
+        container.innerHTML = `<div class="empty-state">
+          <div class="empty-icon">📭</div>
+          <h3>No courses found</h3>
+          <p>${currentFilter === 'my' ? 'You have no courses yet.' : 'No courses are available.'}</p>
+        </div>`;
+        return;
+      }
+      container.innerHTML = `<div class="courses-grid">${courses.map(courseCard).join('')}</div>`;
+    }
+
+    function courseCard(c) {
+      const enrolled = c.is_enrolled;
+      const isOwner = currentUser.role === 'instructor' && c.instructor === currentUser.id;
+      let actions = '';
+
+      if (currentUser.role === 'student') {
+        actions = enrolled
+          ? `<button class="btn btn-outline btn-sm" onclick="toggleEnroll(${c.id}, false)">Unenroll</button>
+             <a href="/assignments/" class="btn btn-primary btn-sm">Assignments</a>`
+          : `<button class="btn btn-success btn-sm" onclick="toggleEnroll(${c.id}, true)">Enroll</button>`;
+      } else if (isOwner) {
+        actions = `<a href="/assignments/" class="btn btn-primary btn-sm">Manage</a>
+                   <button class="btn btn-danger btn-sm" onclick="deleteCourse(${c.id})">Delete</button>`;
+      }
+
+      return `
+        <div class="course-card" id="course-${c.id}">
+          <div class="course-card-top">
+            <h3>${escHtml(c.title)}</h3>
+            <p>by ${escHtml(c.instructor_name || 'Unknown')}</p>
+          </div>
+          <div class="course-card-body">
+            <p style="font-size:.85rem;color:var(--muted);margin-bottom:.75rem;line-height:1.5">
+              ${escHtml(c.description.slice(0, 100))}${c.description.length > 100 ? '…' : ''}
+            </p>
+            <div class="course-meta">
+              <span class="meta-item">👥 ${c.student_count ?? 0} students</span>
+              <span class="meta-item">📖 ${c.lesson_count ?? 0} lessons</span>
+              <span class="meta-item">📝 ${c.assignment_count ?? 0} assignments</span>
+              ${enrolled ? '<span class="status status-graded">Enrolled</span>' : ''}
+            </div>
+            <div class="course-card-actions">${actions}</div>
+          </div>
+        </div>`;
+    }
+
+    async function toggleEnroll(id, enroll) {
+      const res = await fetch(`${API}/api/courses/${id}/enroll/`, {
+        method: 'POST', headers: authHeaders()
+      });
+      const data = await res.json();
+      showAlert(data.detail, res.ok ? 'success' : 'error');
+      loadCourses(currentFilter);
+    }
+
+    async function deleteCourse(id) {
+      if (!confirm('Delete this course? This cannot be undone.')) return;
+      const res = await fetch(`${API}/api/courses/${id}/`, {
+        method: 'DELETE', headers: authHeaders()
+      });
+      if (res.ok || res.status === 204) {
+        showAlert('Course deleted.', 'success');
+        loadCourses(currentFilter);
+      } else {
+        showAlert('Failed to delete course.');
+      }
+    }
+
+    async function handleCreateCourse(e) {
+      e.preventDefault();
+      const btn = document.getElementById('createBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Creating...';
+      const payload = {
+        title: document.getElementById('courseTitle').value,
+        description: document.getElementById('courseDesc').value,
+      };
+      const res = await fetch(`${API}/api/courses/`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      btn.disabled = false;
+      btn.textContent = 'Create Course';
+      if (!res.ok) {
+        showAlert(Object.values(data).flat().join(' '), 'error', 'createAlert');
+        return;
+      }
+      closeModal('createModal');
+      document.getElementById('courseTitle').value = '';
+      document.getElementById('courseDesc').value = '';
+      showAlert('Course created successfully!', 'success');
+      loadCourses('my');
+    }
+
+    function escHtml(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    init();
+  </script>
+</body>
+</html>

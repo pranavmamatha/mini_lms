@@ -1,0 +1,458 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mini LMS — Assignments</title>
+  <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+</head>
+<body>
+
+  <!-- ── Navbar ── -->
+  <nav class="navbar">
+    <a class="navbar-brand" href="/courses/">
+      <span>🎓</span> Mini LMS
+    </a>
+    <div class="navbar-nav">
+      <a class="nav-link" href="/courses/">Courses</a>
+      <a class="nav-link active" href="/assignments/">Assignments</a>
+    </div>
+    <div class="nav-user">
+      <span id="navUsername">Loading...</span>
+      <span id="navBadge" class="badge"></span>
+      <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
+    </div>
+  </nav>
+
+  <div class="main-container">
+
+    <!-- Page Header -->
+    <div class="page-header">
+      <div>
+        <h1>📝 Assignments</h1>
+        <p id="headerSub">View and manage assignments</p>
+      </div>
+      <div id="headerActions"></div>
+    </div>
+
+    <!-- Alert -->
+    <div id="alert" style="display:none"></div>
+
+    <!-- Stats -->
+    <div class="stats-row" id="statsRow" style="display:none">
+      <div class="stat-card">
+        <div class="stat-value" id="statTotal">0</div>
+        <div class="stat-label">Total Assignments</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statSubmitted">0</div>
+        <div class="stat-label">Submitted</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statGraded">0</div>
+        <div class="stat-label">Graded</div>
+      </div>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div class="tab-switcher" style="max-width:360px; margin-bottom:1.5rem">
+      <button class="tab-btn active" onclick="showTab('assignments')">Assignments</button>
+      <button class="tab-btn" onclick="showTab('submissions')" id="subTab">Submissions</button>
+    </div>
+
+    <!-- ── Assignments Table ── -->
+    <div id="assignmentsTab">
+      <div class="card">
+        <div class="card-body">
+          <div class="table-wrapper" id="assignmentsContainer">
+            <div class="empty-state"><div class="empty-icon">⏳</div><h3>Loading...</h3></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Submissions Table ── -->
+    <div id="submissionsTab" style="display:none">
+      <div class="card">
+        <div class="card-body">
+          <div class="table-wrapper" id="submissionsContainer">
+            <div class="empty-state"><div class="empty-icon">⏳</div><h3>Loading...</h3></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Submit Assignment Modal ── -->
+  <div class="modal-overlay" id="submitModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>✍️ Submit Assignment</h3>
+        <button class="modal-close" onclick="closeModal('submitModal')">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="submitAlert" style="display:none"></div>
+        <p style="font-size:.9rem;color:var(--muted);margin-bottom:1rem" id="submitAssignmentTitle"></p>
+        <form onsubmit="handleSubmit(event)">
+          <input type="hidden" id="submitAssignmentId" />
+          <div class="form-group">
+            <label>Your Answer / Work</label>
+            <textarea id="submitContent" class="form-control" rows="6"
+              placeholder="Write your answer here..." required></textarea>
+          </div>
+          <div style="display:flex; gap:.75rem; justify-content:flex-end; margin-top:1rem">
+            <button type="button" class="btn btn-outline" onclick="closeModal('submitModal')">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="submitBtn">Submit</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Create Assignment Modal (instructor) ── -->
+  <div class="modal-overlay" id="createAssModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>➕ New Assignment</h3>
+        <button class="modal-close" onclick="closeModal('createAssModal')">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="createAssAlert" style="display:none"></div>
+        <form onsubmit="handleCreateAssignment(event)">
+          <div class="form-group">
+            <label>Course</label>
+            <select id="assCourse" class="form-control" required></select>
+          </div>
+          <div class="form-group">
+            <label>Assignment Title</label>
+            <input type="text" id="assTitle" class="form-control" placeholder="e.g. Week 1 Quiz" required />
+          </div>
+          <div class="form-group">
+            <label>Description / Instructions</label>
+            <textarea id="assDesc" class="form-control" required></textarea>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem">
+            <div class="form-group">
+              <label>Due Date</label>
+              <input type="datetime-local" id="assDue" class="form-control" required />
+            </div>
+            <div class="form-group">
+              <label>Max Score</label>
+              <input type="number" id="assMax" class="form-control" value="100" min="1" required />
+            </div>
+          </div>
+          <div style="display:flex; gap:.75rem; justify-content:flex-end; margin-top:1rem">
+            <button type="button" class="btn btn-outline" onclick="closeModal('createAssModal')">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="createAssBtn">Create</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Grade Modal (instructor) ── -->
+  <div class="modal-overlay" id="gradeModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>🏆 Grade Submission</h3>
+        <button class="modal-close" onclick="closeModal('gradeModal')">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="gradeAlert" style="display:none"></div>
+        <p id="gradeInfo" style="font-size:.875rem;color:var(--muted);margin-bottom:1rem"></p>
+        <div id="gradeContent" style="background:var(--bg);padding:1rem;border-radius:8px;margin-bottom:1rem;font-size:.875rem;line-height:1.6;white-space:pre-wrap"></div>
+        <form onsubmit="handleGrade(event)">
+          <input type="hidden" id="gradeSubmissionId" />
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem">
+            <div class="form-group">
+              <label>Score</label>
+              <input type="number" id="gradeScore" class="form-control" min="0" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Feedback</label>
+            <textarea id="gradeFeedback" class="form-control" placeholder="Optional feedback for student..."></textarea>
+          </div>
+          <div style="display:flex; gap:.75rem; justify-content:flex-end; margin-top:1rem">
+            <button type="button" class="btn btn-outline" onclick="closeModal('gradeModal')">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="gradeBtn">Save Grade</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = '';
+    let currentUser = null;
+    let myCourses = [];
+
+    function getToken() { return localStorage.getItem('access'); }
+    function authHeaders() {
+      return { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' };
+    }
+    function logout() { localStorage.clear(); window.location.href = '/'; }
+    function openModal(id) { document.getElementById(id).classList.add('open'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+    function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    function showAlert(msg, type = 'error', target = 'alert') {
+      const el = document.getElementById(target);
+      el.innerHTML = `<div class="alert alert-${type}">
+        <span>${type === 'success' ? '✅' : '❌'}</span> ${msg}
+      </div>`;
+      el.style.display = 'block';
+    }
+
+    function showTab(tab) {
+      document.getElementById('assignmentsTab').style.display = tab === 'assignments' ? '' : 'none';
+      document.getElementById('submissionsTab').style.display = tab === 'submissions' ? '' : 'none';
+      document.querySelectorAll('.tab-btn').forEach((b, i) =>
+        b.classList.toggle('active', (tab === 'assignments' && i === 0) || (tab === 'submissions' && i === 1)));
+    }
+
+    async function init() {
+      if (!getToken()) return window.location.href = '/';
+      const stored = localStorage.getItem('user');
+      if (stored) { currentUser = JSON.parse(stored); setupUI(); }
+
+      const res = await fetch(`${API}/api/accounts/profile/`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      if (!res.ok) return logout();
+      currentUser = await res.json();
+      localStorage.setItem('user', JSON.stringify(currentUser));
+      setupUI();
+      loadAssignments();
+      loadSubmissions();
+    }
+
+    async function setupUI() {
+      document.getElementById('navUsername').textContent = currentUser.username;
+      const badge = document.getElementById('navBadge');
+      badge.textContent = currentUser.role;
+      badge.className = `badge badge-${currentUser.role}`;
+
+      document.getElementById('statsRow').style.display = 'grid';
+
+      if (currentUser.role === 'instructor') {
+        document.getElementById('headerActions').innerHTML =
+          `<button class="btn btn-primary" onclick="openCreateAssModal()">➕ New Assignment</button>`;
+        document.getElementById('subTab').textContent = 'All Submissions';
+        // Load my courses for assignment creation
+        const r = await fetch(`${API}/api/courses/my/`, { headers: authHeaders() });
+        if (r.ok) myCourses = await r.json();
+      }
+    }
+
+    function fmtDate(d) {
+      return new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    }
+
+    // ── Assignments ──────────────────────────────────────────────────────
+    async function loadAssignments() {
+      const res = await fetch(`${API}/api/courses/assignments/`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const assignments = await res.json();
+      document.getElementById('statTotal').textContent = assignments.length;
+      renderAssignments(assignments);
+    }
+
+    function renderAssignments(list) {
+      const container = document.getElementById('assignmentsContainer');
+      if (!list.length) {
+        container.innerHTML = `<div class="empty-state">
+          <div class="empty-icon">📭</div>
+          <h3>No assignments found</h3>
+          <p>${currentUser.role === 'student' ? 'Enroll in a course to see assignments.' : 'Create assignments for your courses.'}</p>
+        </div>`;
+        return;
+      }
+      const rows = list.map(a => {
+        const due = new Date(a.due_date);
+        const overdue = due < new Date();
+        const dueCls = overdue ? 'color:var(--danger);font-weight:600' : '';
+        const action = currentUser.role === 'student'
+          ? `<button class="btn btn-primary btn-sm" onclick="openSubmitModal(${a.id}, '${escHtml(a.title)}')">Submit</button>`
+          : `<button class="btn btn-danger btn-sm" onclick="deleteAssignment(${a.id})">Delete</button>`;
+        return `<tr>
+          <td><strong>${escHtml(a.title)}</strong></td>
+          <td>${escHtml(a.course_title || '')}</td>
+          <td style="max-width:220px;font-size:.8rem;color:var(--muted)">${escHtml(a.description.slice(0,80))}${a.description.length>80?'…':''}</td>
+          <td style="${dueCls}">${fmtDate(a.due_date)}</td>
+          <td>${a.max_score} pts</td>
+          <td>${action}</td>
+        </tr>`;
+      }).join('');
+      container.innerHTML = `<table>
+        <thead><tr>
+          <th>Title</th><th>Course</th><th>Description</th><th>Due Date</th><th>Score</th><th>Action</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    }
+
+    // ── Submissions ───────────────────────────────────────────────────────
+    async function loadSubmissions() {
+      const res = await fetch(`${API}/api/courses/submissions/`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const subs = await res.json();
+      const submitted = subs.filter(s => s.status !== 'graded').length;
+      const graded = subs.filter(s => s.status === 'graded').length;
+      document.getElementById('statSubmitted').textContent = submitted;
+      document.getElementById('statGraded').textContent = graded;
+      renderSubmissions(subs);
+    }
+
+    function renderSubmissions(list) {
+      const container = document.getElementById('submissionsContainer');
+      if (!list.length) {
+        container.innerHTML = `<div class="empty-state">
+          <div class="empty-icon">📬</div>
+          <h3>No submissions yet</h3>
+        </div>`;
+        return;
+      }
+      const rows = list.map(s => {
+        const statusMap = { submitted: 'status-submitted', graded: 'status-graded', late: 'status-late' };
+        const scoreBadge = s.score !== null ? `${s.score} pts` : '—';
+        const action = currentUser.role === 'instructor'
+          ? `<button class="btn btn-primary btn-sm" onclick="openGradeModal(${s.id}, '${escHtml(s.student_username)}', ${s.score||0}, '${escHtml(s.feedback||'')}')">Grade</button>`
+          : '';
+        return `<tr>
+          <td>${escHtml(s.assignment_title || '')}</td>
+          <td>${escHtml(s.student_username || '')}</td>
+          <td><span class="status ${statusMap[s.status] || ''}">${s.status}</span></td>
+          <td>${scoreBadge}</td>
+          <td style="max-width:200px;font-size:.8rem;color:var(--muted)">${escHtml((s.feedback||'').slice(0,60))}${(s.feedback||'').length>60?'…':''}</td>
+          <td>${fmtDate(s.submitted_at)}</td>
+          <td>${action}</td>
+        </tr>`;
+      }).join('');
+      container.innerHTML = `<table>
+        <thead><tr>
+          <th>Assignment</th><th>Student</th><th>Status</th><th>Score</th><th>Feedback</th><th>Submitted</th><th>Action</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    }
+
+    // ── Submit Assignment ────────────────────────────────────────────────
+    function openSubmitModal(id, title) {
+      document.getElementById('submitAssignmentId').value = id;
+      document.getElementById('submitAssignmentTitle').textContent = `Assignment: ${title}`;
+      document.getElementById('submitContent').value = '';
+      document.getElementById('submitAlert').style.display = 'none';
+      openModal('submitModal');
+    }
+
+    async function handleSubmit(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+      const payload = {
+        assignment: +document.getElementById('submitAssignmentId').value,
+        content: document.getElementById('submitContent').value,
+      };
+      const res = await fetch(`${API}/api/courses/submissions/`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      btn.disabled = false;
+      btn.textContent = 'Submit';
+      if (!res.ok) {
+        showAlert(Object.values(data).flat().join(' '), 'error', 'submitAlert');
+        return;
+      }
+      closeModal('submitModal');
+      showAlert('Assignment submitted successfully!', 'success');
+      loadSubmissions();
+      showTab('submissions');
+    }
+
+    // ── Create Assignment (instructor) ────────────────────────────────────
+    function openCreateAssModal() {
+      const sel = document.getElementById('assCourse');
+      sel.innerHTML = myCourses.map(c => `<option value="${c.id}">${escHtml(c.title)}</option>`).join('');
+      openModal('createAssModal');
+    }
+
+    async function handleCreateAssignment(e) {
+      e.preventDefault();
+      const btn = document.getElementById('createAssBtn');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      const payload = {
+        course: +document.getElementById('assCourse').value,
+        title: document.getElementById('assTitle').value,
+        description: document.getElementById('assDesc').value,
+        due_date: document.getElementById('assDue').value,
+        max_score: +document.getElementById('assMax').value,
+      };
+      const res = await fetch(`${API}/api/courses/assignments/`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      btn.disabled = false; btn.textContent = 'Create';
+      if (!res.ok) {
+        showAlert(Object.values(data).flat().join(' '), 'error', 'createAssAlert');
+        return;
+      }
+      closeModal('createAssModal');
+      showAlert('Assignment created!', 'success');
+      loadAssignments();
+    }
+
+    async function deleteAssignment(id) {
+      if (!confirm('Delete this assignment?')) return;
+      const res = await fetch(`${API}/api/courses/assignments/${id}/`, {
+        method: 'DELETE', headers: authHeaders()
+      });
+      if (res.ok || res.status === 204) {
+        showAlert('Assignment deleted.', 'success');
+        loadAssignments();
+      }
+    }
+
+    // ── Grade Submission (instructor) ─────────────────────────────────────
+    function openGradeModal(id, student, score, feedback) {
+      document.getElementById('gradeSubmissionId').value = id;
+      document.getElementById('gradeInfo').textContent = `Student: ${student}`;
+      document.getElementById('gradeScore').value = score || '';
+      document.getElementById('gradeFeedback').value = feedback || '';
+      // Load content
+      fetch(`${API}/api/courses/submissions/${id}/`, { headers: authHeaders() })
+        .then(r => r.json())
+        .then(s => { document.getElementById('gradeContent').textContent = s.content; });
+      document.getElementById('gradeAlert').style.display = 'none';
+      openModal('gradeModal');
+    }
+
+    async function handleGrade(e) {
+      e.preventDefault();
+      const btn = document.getElementById('gradeBtn');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      const id = document.getElementById('gradeSubmissionId').value;
+      const payload = {
+        score: +document.getElementById('gradeScore').value,
+        feedback: document.getElementById('gradeFeedback').value,
+      };
+      const res = await fetch(`${API}/api/courses/submissions/${id}/`, {
+        method: 'PATCH', headers: authHeaders(), body: JSON.stringify(payload)
+      });
+      btn.disabled = false; btn.textContent = 'Save Grade';
+      if (!res.ok) {
+        showAlert('Failed to save grade.', 'error', 'gradeAlert');
+        return;
+      }
+      closeModal('gradeModal');
+      showAlert('Grade saved!', 'success');
+      loadSubmissions();
+    }
+
+    init();
+  </script>
+</body>
+</html>
